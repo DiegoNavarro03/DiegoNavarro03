@@ -17,8 +17,9 @@ CSV_MOMENTOS = DATOS_LIMPIOS_DIR / "momentos_estadisticos_diarios_estacion_imerg
 CSV_PERCENTILES = DATOS_LIMPIOS_DIR / "percentiles_diarios_estacion_imerg_cmorph.csv"
 CSV_L_MOMENTOS = DATOS_LIMPIOS_DIR / "l_momentos_diarios_estacion_imerg_cmorph.csv"
 
-INICIO = pd.Timestamp("2022-01-01")
+INICIO = pd.Timestamp("2015-01-01")
 FIN = pd.Timestamp("2024-12-31")
+PERIODO_TEXTO = "2015–2024"
 
 COLUMNAS = ["estacion_mm", "imerg_mm", "cmorph_mm"]
 FUENTES = {
@@ -30,7 +31,9 @@ COLORES = {
     "estacion_mm": "#1f77b4",
     "imerg_mm": "#d95f02",
     "cmorph_mm": "#2ca25f",
+    "referencia": "#4d4d4d",
 }
+PERCENTILES = [0, 5, 10, 25, 50, 75, 90, 95, 99, 100]
 
 
 def configurar_matplotlib() -> None:
@@ -83,7 +86,7 @@ def leer_mensual() -> pd.DataFrame:
     mensual = pd.read_csv(CSV_MENSUAL)
     mensual["fecha"] = pd.to_datetime(mensual["fecha"], format="%Y-%m", errors="coerce")
     mensual[COLUMNAS] = mensual[COLUMNAS].apply(pd.to_numeric, errors="coerce")
-    return mensual.sort_values("fecha").reset_index(drop=True)
+    return mensual[(mensual["fecha"] >= INICIO) & (mensual["fecha"] <= FIN)].sort_values("fecha").reset_index(drop=True)
 
 
 def calcular_anual(diario: pd.DataFrame) -> pd.DataFrame:
@@ -95,10 +98,11 @@ def calcular_momentos(diario: pd.DataFrame) -> pd.DataFrame:
     filas = []
     for columna in COLUMNAS:
         serie = diario[columna].dropna()
-        dias_lluvia = int((serie > 0).sum())
         filas.append(
             {
                 "fuente": FUENTES[columna],
+                "n_dias_validos": int(serie.count()),
+                "dias_lluvia": int((serie > 0).sum()),
                 "media_mm": serie.mean(),
                 "varianza_mm2": serie.var(ddof=1),
                 "desviacion_estandar_mm": serie.std(ddof=1),
@@ -106,61 +110,50 @@ def calcular_momentos(diario: pd.DataFrame) -> pd.DataFrame:
                 "curtosis": serie.kurt(),
                 "minimo_mm": serie.min(),
                 "maximo_mm": serie.max(),
-                "numero_dias": int(serie.count()),
-                "numero_dias_con_lluvia": dias_lluvia,
-                "porcentaje_dias_con_lluvia": 100 * dias_lluvia / serie.count(),
+                "total_mm": serie.sum(),
             }
         )
     return pd.DataFrame(filas)
 
 
 def calcular_percentiles(diario: pd.DataFrame) -> pd.DataFrame:
-    percentiles = [50, 75, 90, 95, 99]
     filas = []
     for columna in COLUMNAS:
         serie = diario[columna].dropna()
         fila = {"fuente": FUENTES[columna]}
-        for percentil in percentiles:
-            fila[f"P{percentil}"] = np.percentile(serie, percentil)
+        for percentil in PERCENTILES:
+            fila[f"p{percentil:02d}_mm"] = np.percentile(serie, percentil)
         filas.append(fila)
     return pd.DataFrame(filas)
 
 
 def calcular_l_momentos_serie(serie: pd.Series) -> dict[str, float]:
     valores = np.sort(serie.dropna().to_numpy(dtype=float))
-    valores = valores[valores > 0]
     n = len(valores)
-    if n < 4:
+    if n < 3:
         return {
-            "L1": np.nan,
-            "L2": np.nan,
-            "L_CV": np.nan,
-            "L_asimetria": np.nan,
-            "L_curtosis": np.nan,
-            "n_eventos_positivos": n,
+            "n_dias_validos": n,
+            "l1_media_l_mm": np.nan,
+            "l2_escala_l_mm": np.nan,
+            "l3_asimetria_l_mm": np.nan,
+            "t_l_cv": np.nan,
+            "t3_l_asimetria": np.nan,
         }
 
-    # Implementación sencilla con momentos ponderados por probabilidad.
-    # Para datos ordenados x_i, se estiman b0, b1, b2 y b3 con pesos
-    # combinatorios muestrales; luego se transforman a L1-L4.
-    i = np.arange(n)
-    b0 = np.mean(valores)
-    b1 = np.mean((i / (n - 1)) * valores)
-    b2 = np.mean((i * (i - 1) / ((n - 1) * (n - 2))) * valores)
-    b3 = np.mean((i * (i - 1) * (i - 2) / ((n - 1) * (n - 2) * (n - 3))) * valores)
-
+    i = np.arange(n, dtype=float)
+    b0 = valores.mean()
+    b1 = np.sum((i / (n - 1)) * valores) / n
+    b2 = np.sum((i * (i - 1) / ((n - 1) * (n - 2))) * valores) / n
     l1 = b0
     l2 = 2 * b1 - b0
     l3 = 6 * b2 - 6 * b1 + b0
-    l4 = 20 * b3 - 30 * b2 + 12 * b1 - b0
-
     return {
-        "L1": l1,
-        "L2": l2,
-        "L_CV": l2 / l1 if l1 != 0 else np.nan,
-        "L_asimetria": l3 / l2 if l2 != 0 else np.nan,
-        "L_curtosis": l4 / l2 if l2 != 0 else np.nan,
-        "n_eventos_positivos": n,
+        "n_dias_validos": n,
+        "l1_media_l_mm": l1,
+        "l2_escala_l_mm": l2,
+        "l3_asimetria_l_mm": l3,
+        "t_l_cv": l2 / l1 if l1 != 0 else np.nan,
+        "t3_l_asimetria": l3 / l2 if l2 != 0 else np.nan,
     }
 
 
@@ -175,21 +168,21 @@ def calcular_l_momentos(diario: pd.DataFrame) -> pd.DataFrame:
 
 def figura_precipitacion_anual(anual: pd.DataFrame) -> None:
     nombre = "fig09_precipitacion_anual_estacion_imerg_cmorph"
-    titulo = "Precipitación anual acumulada por fuente"
+    titulo = f"Precipitación anual acumulada: estación CRNS, IMERG y CMORPH ({PERIODO_TEXTO})"
 
-    fig, ax = plt.subplots(figsize=(8.8, 4.8))
+    fig, ax = plt.subplots(figsize=(10.5, 5.0))
     for columna in COLUMNAS:
         ax.plot(
             anual["anio"],
             anual[columna],
             marker="o",
-            lw=1.9,
+            lw=1.8,
             color=COLORES[columna],
             label=FUENTES[columna],
         )
     ax.set_title(titulo)
     ax.set_xlabel("Año")
-    ax.set_ylabel("Precipitación anual acumulada (mm/año)")
+    ax.set_ylabel("Precipitación anual (mm/año)")
     ax.set_xticks(anual["anio"])
     ax.legend(loc="upper right")
     fig.tight_layout()
@@ -208,41 +201,33 @@ def figura_precipitacion_anual(anual: pd.DataFrame) -> None:
             )
         )
     aplicar_layout_plotly(fig_html, titulo)
-    fig_html.update_layout(
-        annotations=[
-            dict(
-                text="Pregunta: ¿Cómo varía el acumulado anual entre estación CRNS, IMERG y CMORPH?",
-                x=0,
-                y=-0.22,
-                xref="paper",
-                yref="paper",
-                showarrow=False,
-                align="left",
-            )
-        ]
-    )
     fig_html.update_xaxes(title_text="Año", dtick=1)
-    fig_html.update_yaxes(title_text="Precipitación anual acumulada (mm/año)")
+    fig_html.update_yaxes(title_text="Precipitación anual (mm/año)")
     guardar_html(fig_html, nombre)
 
 
 def figura_percentiles(percentiles: pd.DataFrame) -> None:
     nombre = "fig10_percentiles_diarios_estacion_imerg_cmorph"
-    titulo = "Percentiles altos de precipitación diaria"
-    percentiles_altos = ["P75", "P90", "P95", "P99"]
+    titulo = f"Percentiles de precipitación diaria ({PERIODO_TEXTO})"
+    columnas_percentiles = [f"p{percentil:02d}_mm" for percentil in PERCENTILES]
 
-    fig, ax = plt.subplots(figsize=(9.2, 4.8))
-    for _, fila in percentiles.iterrows():
-        fuente = fila["fuente"]
-        columna_color = next(col for col, etiqueta in FUENTES.items() if etiqueta == fuente)
-        ax.plot(
-            percentiles_altos,
-            [fila[p] for p in percentiles_altos],
-            marker="o",
-            lw=1.9,
-            color=COLORES[columna_color],
-            label=fuente,
+    fig, ax = plt.subplots(figsize=(9.6, 5.0))
+    fig_html = go.Figure()
+    for columna_fuente in COLUMNAS:
+        fuente = FUENTES[columna_fuente]
+        fila = percentiles.loc[percentiles["fuente"] == fuente].iloc[0]
+        valores = [fila[col] for col in columnas_percentiles]
+        ax.plot(PERCENTILES, valores, marker="o", lw=1.8, color=COLORES[columna_fuente], label=fuente)
+        fig_html.add_trace(
+            go.Scatter(
+                x=PERCENTILES,
+                y=valores,
+                mode="lines+markers",
+                name=fuente,
+                line=dict(color=COLORES[columna_fuente]),
+            )
         )
+
     ax.set_title(titulo)
     ax.set_xlabel("Percentil")
     ax.set_ylabel("Precipitación diaria (mm/día)")
@@ -251,58 +236,26 @@ def figura_percentiles(percentiles: pd.DataFrame) -> None:
     fig.savefig(FIGURAS_DIR / f"{nombre}.png", bbox_inches="tight")
     plt.close(fig)
 
-    fig_html = go.Figure()
-    for _, fila in percentiles.iterrows():
-        fuente = fila["fuente"]
-        columna_color = next(col for col, etiqueta in FUENTES.items() if etiqueta == fuente)
-        fig_html.add_trace(
-            go.Scatter(
-                x=percentiles_altos,
-                y=[fila[p] for p in percentiles_altos],
-                mode="lines+markers",
-                name=fuente,
-                line=dict(color=COLORES[columna_color]),
-            )
-        )
     aplicar_layout_plotly(fig_html, titulo)
-    fig_html.update_layout(
-        annotations=[
-            dict(
-                text="Pregunta: ¿Qué fuente representa mayores intensidades diarias extremas?",
-                x=0,
-                y=-0.22,
-                xref="paper",
-                yref="paper",
-                showarrow=False,
-                align="left",
-            )
-        ]
-    )
     fig_html.update_xaxes(title_text="Percentil")
     fig_html.update_yaxes(title_text="Precipitación diaria (mm/día)")
     guardar_html(fig_html, nombre)
 
 
-def ecdf(serie: pd.Series) -> tuple[np.ndarray, np.ndarray]:
-    valores = np.sort(serie.dropna().to_numpy(dtype=float))
-    valores = valores[valores > 0]
-    probabilidades = np.arange(1, len(valores) + 1) / len(valores)
-    return valores, probabilidades
-
-
 def figura_ecdf(diario: pd.DataFrame) -> None:
     nombre = "fig11_ecdf_precipitacion_diaria_estacion_imerg_cmorph"
-    titulo = "Distribución acumulada empírica de la precipitación diaria positiva"
+    titulo = f"Distribución empírica acumulada de precipitación diaria ({PERIODO_TEXTO})"
 
-    fig, ax = plt.subplots(figsize=(9.2, 5.0))
+    fig, ax = plt.subplots(figsize=(9.6, 5.0))
     fig_html = go.Figure()
     for columna in COLUMNAS:
-        x, y = ecdf(diario[columna])
-        ax.plot(x, y, lw=1.9, color=COLORES[columna], label=FUENTES[columna])
+        valores = np.sort(diario[columna].dropna().to_numpy(dtype=float))
+        probabilidad = np.arange(1, len(valores) + 1) / len(valores)
+        ax.plot(valores, probabilidad, lw=1.8, color=COLORES[columna], label=FUENTES[columna])
         fig_html.add_trace(
             go.Scatter(
-                x=x,
-                y=y,
+                x=valores,
+                y=probabilidad,
                 mode="lines",
                 name=FUENTES[columna],
                 line=dict(color=COLORES[columna]),
@@ -310,78 +263,35 @@ def figura_ecdf(diario: pd.DataFrame) -> None:
         )
 
     ax.set_title(titulo)
-    ax.set_xlabel("Precipitación diaria positiva (mm/día)")
+    ax.set_xlabel("Precipitación diaria (mm/día)")
     ax.set_ylabel("Probabilidad acumulada")
+    ax.set_ylim(0, 1.01)
     ax.legend(loc="lower right")
     fig.tight_layout()
     fig.savefig(FIGURAS_DIR / f"{nombre}.png", bbox_inches="tight")
     plt.close(fig)
 
     aplicar_layout_plotly(fig_html, titulo)
-    fig_html.update_layout(
-        annotations=[
-            dict(
-                text="Pregunta: ¿Cómo se distribuyen los eventos diarios de precipitación en cada fuente?",
-                x=0,
-                y=-0.22,
-                xref="paper",
-                yref="paper",
-                showarrow=False,
-                align="left",
-            )
-        ]
-    )
-    fig_html.update_xaxes(title_text="Precipitación diaria positiva (mm/día)")
-    fig_html.update_yaxes(title_text="Probabilidad acumulada", range=[0, 1])
+    fig_html.update_xaxes(title_text="Precipitación diaria (mm/día)")
+    fig_html.update_yaxes(title_text="Probabilidad acumulada", range=[0, 1.01])
     guardar_html(fig_html, nombre)
 
 
-def imprimir_resumen(
-    anual: pd.DataFrame,
-    momentos: pd.DataFrame,
-    percentiles: pd.DataFrame,
-) -> None:
-    totales = anual[COLUMNAS].sum()
-    mayor_total = FUENTES[totales.idxmax()]
-    maximos = momentos.set_index("fuente")["maximo_mm"]
-    mayor_maximo = maximos.idxmax()
-    p95 = percentiles.set_index("fuente")["P95"]
-    p99 = percentiles.set_index("fuente")["P99"]
+def imprimir_resumen(diario: pd.DataFrame, archivos: list[Path]) -> None:
+    numero_anios = FIN.year - INICIO.year + 1
+    dias_comunes = int(diario[COLUMNAS].notna().all(axis=1).sum())
 
-    print("\nPrecipitación anual por fuente")
-    for _, fila in anual.iterrows():
-        print(
-            f"- {int(fila['anio'])}: Estación CRNS = {fila['estacion_mm']:.2f} mm; "
-            f"IMERG = {fila['imerg_mm']:.2f} mm; CMORPH = {fila['cmorph_mm']:.2f} mm."
-        )
-
-    print("\nResumen interpretativo")
-    print(f"- En el total 2022-2024, la fuente que acumula más precipitación es {mayor_total}.")
-    print(f"- El mayor máximo diario corresponde a {mayor_maximo}: {maximos.max():.2f} mm/día.")
-    print(f"- El mayor P95 corresponde a {p95.idxmax()}: {p95.max():.2f} mm/día.")
-    print(f"- El mayor P99 corresponde a {p99.idxmax()}: {p99.max():.2f} mm/día.")
-
-    print("\nMedia, asimetría y curtosis diaria")
-    for _, fila in momentos.iterrows():
-        print(
-            f"- {fila['fuente']}: media = {fila['media_mm']:.2f} mm/día, "
-            f"asimetría = {fila['asimetria']:.2f}, curtosis = {fila['curtosis']:.2f}."
-        )
-
-    estacion_total = totales["estacion_mm"]
-    for columna in ["imerg_mm", "cmorph_mm"]:
-        diferencia = totales[columna] - estacion_total
-        porcentaje = 100 * diferencia / estacion_total
-        verbo = "sobreestima" if diferencia > 0 else "subestima"
-        print(
-            f"- {FUENTES[columna]} {verbo} el acumulado total frente a la estación "
-            f"en {abs(diferencia):.2f} mm ({abs(porcentaje):.1f}%)."
-        )
-
-    print("\nPreguntas respondidas por las figuras")
-    print("- Figura 9: ¿Cómo varía el acumulado anual entre estación CRNS, IMERG y CMORPH?")
-    print("- Figura 10: ¿Qué fuente representa mayores intensidades diarias extremas?")
-    print("- Figura 11: ¿Cómo se distribuyen los eventos diarios de precipitación en cada fuente?")
+    print("\nResumen final del análisis 2015–2024")
+    print(f"- Periodo usado: {INICIO:%Y}–{FIN:%Y}")
+    print(f"- Número de años analizados: {numero_anios}")
+    print(f"- Número de días comunes entre estación, IMERG y CMORPH: {dias_comunes:,}")
+    print("- Precipitación total por fuente:")
+    for columna in COLUMNAS:
+        print(f"  {FUENTES[columna]}: {diario[columna].sum(skipna=True):.2f} mm")
+    print("- Archivos regenerados:")
+    for archivo in archivos:
+        print(f"  {archivo}")
+    print("- Confirmación: no se crearon archivos duplicados innecesarios; se sobrescribieron los archivos existentes.")
 
 
 def main() -> None:
@@ -397,23 +307,28 @@ def main() -> None:
     percentiles = calcular_percentiles(diario)
     l_momentos = calcular_l_momentos(diario)
 
-    anual.to_csv(CSV_ANUAL, index=False, encoding="utf-8-sig")
-    momentos.to_csv(CSV_MOMENTOS, index=False, encoding="utf-8-sig")
-    percentiles.to_csv(CSV_PERCENTILES, index=False, encoding="utf-8-sig")
-    l_momentos.to_csv(CSV_L_MOMENTOS, index=False, encoding="utf-8-sig")
+    anual.to_csv(CSV_ANUAL, index=False)
+    momentos.to_csv(CSV_MOMENTOS, index=False)
+    percentiles.to_csv(CSV_PERCENTILES, index=False)
+    l_momentos.to_csv(CSV_L_MOMENTOS, index=False)
 
     figura_precipitacion_anual(anual)
     figura_percentiles(percentiles)
     figura_ecdf(diario)
-    imprimir_resumen(anual, momentos, percentiles)
 
-    print("\nArchivos generados")
-    print(f"- {CSV_ANUAL}")
-    print(f"- {CSV_MOMENTOS}")
-    print(f"- {CSV_PERCENTILES}")
-    print(f"- {CSV_L_MOMENTOS}")
-    print(f"- {FIGURAS_DIR}")
-    print("Nota: los HTML se generan con Plotly y los PNG con Matplotlib; no se requiere Kaleido.")
+    archivos = [
+        CSV_ANUAL,
+        CSV_MOMENTOS,
+        CSV_PERCENTILES,
+        CSV_L_MOMENTOS,
+        FIGURAS_DIR / "fig09_precipitacion_anual_estacion_imerg_cmorph.png",
+        FIGURAS_DIR / "fig09_precipitacion_anual_estacion_imerg_cmorph.html",
+        FIGURAS_DIR / "fig10_percentiles_diarios_estacion_imerg_cmorph.png",
+        FIGURAS_DIR / "fig10_percentiles_diarios_estacion_imerg_cmorph.html",
+        FIGURAS_DIR / "fig11_ecdf_precipitacion_diaria_estacion_imerg_cmorph.png",
+        FIGURAS_DIR / "fig11_ecdf_precipitacion_diaria_estacion_imerg_cmorph.html",
+    ]
+    imprimir_resumen(diario, archivos)
 
 
 if __name__ == "__main__":

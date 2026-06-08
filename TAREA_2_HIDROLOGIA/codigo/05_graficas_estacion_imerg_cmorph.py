@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
@@ -20,21 +21,12 @@ SATELITE_DIR = next(DATOS_PREC_DIR.glob("SAT*LITE"), DATOS_PREC_DIR / "SATELITE"
 IMERG_DIR = SATELITE_DIR / "IMERG"
 CMORPH_CSV = SATELITE_DIR / "CMORPH" / "cmorph_champaign_1998_2025.csv"
 
-INICIO_COMPARACION = pd.Timestamp("2022-01-01")
-FIN_COMPARACION_EXCLUSIVO = pd.Timestamp("2025-01-01")
+INICIO_COMPARACION = pd.Timestamp("2015-01-01")
+FIN_COMPARACION = pd.Timestamp("2024-12-31")
+FIN_COMPARACION_EXCLUSIVO = FIN_COMPARACION + pd.Timedelta(days=1)
+ANIOS = range(INICIO_COMPARACION.year, FIN_COMPARACION.year + 1)
+PERIODO_TEXTO = "2015–2024"
 ZONA_HORARIA_LOCAL = "America/Chicago"
-
-ARCHIVOS_ESTACION = [
-    "CRNS0101-05-2022-IL_Champaign_9_SW.txt",
-    "CRNS0101-05-2023-IL_Champaign_9_SW.txt",
-    "CRNS0101-05-2024-IL_Champaign_9_SW.txt",
-]
-
-ARCHIVOS_IMERG = [
-    "imerg_champaign_2022.csv",
-    "imerg_champaign_2023.csv",
-    "imerg_champaign_2024.csv",
-]
 
 COLUMNAS_CRNS = [
     "wban",
@@ -118,6 +110,27 @@ def validar_archivos(rutas: list[Path]) -> None:
         raise FileNotFoundError(f"No se encontraron estos archivos:\n{lista}")
 
 
+def extraer_anio(ruta: Path) -> int | None:
+    coincidencia = re.search(r"(19|20)\d{2}", ruta.name)
+    return int(coincidencia.group(0)) if coincidencia else None
+
+
+def seleccionar_archivos_por_anio(carpeta: Path, patron: str) -> list[Path]:
+    rutas = []
+    for ruta in sorted(carpeta.glob(patron)):
+        anio = extraer_anio(ruta)
+        if anio in ANIOS:
+            rutas.append(ruta)
+
+    anios_encontrados = {extraer_anio(ruta) for ruta in rutas}
+    anios_faltantes = [anio for anio in ANIOS if anio not in anios_encontrados]
+    if anios_faltantes:
+        raise FileNotFoundError(
+            f"Faltan archivos en {carpeta} para estos años: {anios_faltantes}"
+        )
+    return rutas
+
+
 def construir_fecha_hora(df: pd.DataFrame, col_fecha: str, col_hora: str) -> pd.Series:
     fecha = df[col_fecha].astype("Int64").astype(str).str.zfill(8)
     hora = df[col_hora].astype("Int64").astype(str).str.zfill(4)
@@ -149,7 +162,7 @@ def leer_mensual() -> pd.DataFrame:
 
 
 def leer_estacion_30min() -> pd.DataFrame:
-    rutas = [ESTACION_DIR / nombre for nombre in ARCHIVOS_ESTACION]
+    rutas = seleccionar_archivos_por_anio(ESTACION_DIR, "CRNS*.txt")
     validar_archivos(rutas)
 
     dataframes = []
@@ -180,7 +193,7 @@ def leer_estacion_30min() -> pd.DataFrame:
 
 
 def leer_imerg_30min() -> pd.DataFrame:
-    rutas = [IMERG_DIR / nombre for nombre in ARCHIVOS_IMERG]
+    rutas = seleccionar_archivos_por_anio(IMERG_DIR, "imerg_champaign_*.csv")
     validar_archivos(rutas)
 
     dataframes = []
@@ -193,14 +206,14 @@ def leer_imerg_30min() -> pd.DataFrame:
         )
         df.columns = [col.strip() for col in df.columns]
         columna_precip = next(col for col in df.columns if col != "time")
-        df = df.rename(columns={columna_precip: "precip_mm_h"})
+        df = df.rename(columns={columna_precip: "precip_mm_per_hr"})
         dataframes.append(df)
 
     imerg = pd.concat(dataframes, ignore_index=True)
     imerg["fecha_hora_utc"] = pd.to_datetime(imerg["time"], errors="coerce")
-    imerg["precip_mm_h"] = pd.to_numeric(imerg["precip_mm_h"], errors="coerce")
-    imerg.loc[imerg["precip_mm_h"] < 0, "precip_mm_h"] = np.nan
-    imerg["imerg_30min"] = imerg["precip_mm_h"] * 0.5
+    imerg["precip_mm_per_hr"] = pd.to_numeric(imerg["precip_mm_per_hr"], errors="coerce")
+    imerg.loc[imerg["precip_mm_per_hr"] < 0, "precip_mm_per_hr"] = np.nan
+    imerg["imerg_30min"] = imerg["precip_mm_per_hr"] * 0.5
     imerg = filtrar_periodo(imerg, "fecha_hora_utc")
     return agregar_hora_local(imerg[["fecha_hora_utc", "imerg_30min"]], "fecha_hora_utc")
 
@@ -235,8 +248,16 @@ def combinar_30min(
     cmorph_30min: pd.DataFrame,
 ) -> pd.DataFrame:
     datos = estacion_30min[["fecha_hora_utc", "hora_local", "estacion_30min"]]
-    datos = datos.merge(imerg_30min[["fecha_hora_utc", "imerg_30min"]], on="fecha_hora_utc", how="outer")
-    datos = datos.merge(cmorph_30min[["fecha_hora_utc", "cmorph_30min"]], on="fecha_hora_utc", how="outer")
+    datos = datos.merge(
+        imerg_30min[["fecha_hora_utc", "imerg_30min"]],
+        on="fecha_hora_utc",
+        how="outer",
+    )
+    datos = datos.merge(
+        cmorph_30min[["fecha_hora_utc", "cmorph_30min"]],
+        on="fecha_hora_utc",
+        how="outer",
+    )
     datos = agregar_hora_local(datos.drop(columns=["hora_local"], errors="ignore"), "fecha_hora_utc")
     return datos.sort_values("fecha_hora_utc").reset_index(drop=True)
 
@@ -261,14 +282,13 @@ def suavizar_histograma(valores: pd.Series, limite: float, n_bins: int = 55) -> 
     hist, bordes = np.histogram(valores.clip(upper=limite), bins=bins, density=True)
     centros = (bordes[:-1] + bordes[1:]) / 2
     kernel = np.array([1, 2, 3, 2, 1], dtype=float)
-    kernel = kernel / kernel.sum()
-    densidad = np.convolve(hist, kernel, mode="same")
+    densidad = np.convolve(hist, kernel / kernel.sum(), mode="same")
     return centros, densidad
 
 
 def figura_serie_diaria(diario: pd.DataFrame) -> None:
     nombre = "fig01_serie_diaria_estacion_imerg_cmorph"
-    titulo = "Serie diaria de precipitación: estación CRNS, IMERG y CMORPH (2022-2024)"
+    titulo = f"Serie diaria de precipitación: estación CRNS, IMERG y CMORPH ({PERIODO_TEXTO})"
 
     fig, ax = plt.subplots(figsize=(12.5, 4.8))
     ax.plot(diario["fecha"], diario["estacion_mm"], color=COLORES["estacion"], lw=1.05, label="Estación CRNS")
@@ -278,8 +298,8 @@ def figura_serie_diaria(diario: pd.DataFrame) -> None:
     ax.set_xlabel("Fecha")
     ax.set_ylabel("Precipitación diaria (mm/día)")
     ax.legend(loc="upper right")
-    ax.xaxis.set_major_locator(mdates.MonthLocator(interval=3))
-    ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m"))
+    ax.xaxis.set_major_locator(mdates.YearLocator())
+    ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y"))
     fig.autofmt_xdate()
     fig.tight_layout()
     fig.savefig(FIGURAS_DIR / f"{nombre}.png", bbox_inches="tight")
@@ -305,18 +325,18 @@ def figura_serie_diaria(diario: pd.DataFrame) -> None:
 
 def figura_acumulado_mensual(mensual: pd.DataFrame) -> None:
     nombre = "fig02_acumulado_mensual_estacion_imerg_cmorph"
-    titulo = "Acumulado mensual de precipitación: estación CRNS, IMERG y CMORPH"
+    titulo = f"Acumulado mensual de precipitación: estación CRNS, IMERG y CMORPH ({PERIODO_TEXTO})"
 
     fig, ax = plt.subplots(figsize=(12.5, 5.0))
-    ax.plot(mensual["fecha"], mensual["estacion_mm"], color=COLORES["estacion"], marker="o", lw=1.6, label="Estación CRNS")
-    ax.plot(mensual["fecha"], mensual["imerg_mm"], color=COLORES["imerg"], marker="o", lw=1.6, label="IMERG")
-    ax.plot(mensual["fecha"], mensual["cmorph_mm"], color=COLORES["cmorph"], marker="o", lw=1.6, label="CMORPH")
+    ax.plot(mensual["fecha"], mensual["estacion_mm"], color=COLORES["estacion"], marker="o", ms=3, lw=1.4, label="Estación CRNS")
+    ax.plot(mensual["fecha"], mensual["imerg_mm"], color=COLORES["imerg"], marker="o", ms=3, lw=1.4, label="IMERG")
+    ax.plot(mensual["fecha"], mensual["cmorph_mm"], color=COLORES["cmorph"], marker="o", ms=3, lw=1.4, label="CMORPH")
     ax.set_title(titulo)
     ax.set_xlabel("Mes")
     ax.set_ylabel("Precipitación mensual acumulada (mm/mes)")
     ax.legend(loc="upper right")
-    ax.xaxis.set_major_locator(mdates.MonthLocator(interval=2))
-    ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m"))
+    ax.xaxis.set_major_locator(mdates.YearLocator())
+    ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y"))
     fig.autofmt_xdate()
     fig.tight_layout()
     fig.savefig(FIGURAS_DIR / f"{nombre}.png", bbox_inches="tight")
@@ -341,7 +361,7 @@ def figura_acumulado_mensual(mensual: pd.DataFrame) -> None:
 
 def figura_ciclo_diurno(datos_30min: pd.DataFrame) -> None:
     nombre = "fig03_ciclo_diurno_estacion_imerg_cmorph"
-    titulo = "Ciclo diurno de la precipitación en hora local de Champaign, Illinois"
+    titulo = f"Ciclo diurno de la precipitación en hora local de Champaign ({PERIODO_TEXTO})"
     columnas = ["estacion_30min", "imerg_30min", "cmorph_30min"]
     ciclo = datos_30min.groupby("hora_local", as_index=False)[columnas].sum(min_count=1)
 
@@ -379,7 +399,7 @@ def figura_ciclo_diurno(datos_30min: pd.DataFrame) -> None:
 
 def figura_distribucion_intensidades(datos_30min: pd.DataFrame) -> None:
     nombre = "fig04_distribucion_intensidades_estacion_imerg_cmorph"
-    titulo = "Distribución de intensidades positivas a resolución de 30 minutos"
+    titulo = f"Distribución de intensidades positivas a resolución de 30 minutos ({PERIODO_TEXTO})"
     columnas = ["estacion_30min", "imerg_30min", "cmorph_30min"]
     positivos = {col: datos_30min[col].dropna().loc[lambda serie: serie > 0] for col in columnas}
     limite = pd.concat(positivos.values(), ignore_index=True).quantile(0.99)
@@ -417,7 +437,7 @@ def figura_distribucion_intensidades(datos_30min: pd.DataFrame) -> None:
 
 def figura_dispersion_diaria(diario: pd.DataFrame) -> dict[str, dict[str, float]]:
     nombre = "fig05_dispersion_diaria_estacion_imerg_cmorph"
-    titulo = "Dispersión diaria: estación CRNS frente a IMERG y CMORPH"
+    titulo = f"Dispersión diaria: estación CRNS frente a IMERG y CMORPH ({PERIODO_TEXTO})"
     metricas = {
         "IMERG": calcular_metricas(diario["estacion_mm"], diario["imerg_mm"]),
         "CMORPH": calcular_metricas(diario["estacion_mm"], diario["cmorph_mm"]),
@@ -475,6 +495,21 @@ def imprimir_metricas(metricas: dict[str, dict[str, float]]) -> None:
         )
 
 
+def imprimir_resumen_archivos() -> None:
+    archivos = [
+        "fig01_serie_diaria_estacion_imerg_cmorph",
+        "fig02_acumulado_mensual_estacion_imerg_cmorph",
+        "fig03_ciclo_diurno_estacion_imerg_cmorph",
+        "fig04_distribucion_intensidades_estacion_imerg_cmorph",
+        "fig05_dispersion_diaria_estacion_imerg_cmorph",
+    ]
+    print("\nArchivos regenerados")
+    for nombre in archivos:
+        print(f"- {FIGURAS_DIR / f'{nombre}.png'}")
+        print(f"- {FIGURAS_DIR / f'{nombre}.html'}")
+    print("- Confirmación: no se crearon archivos duplicados innecesarios; se sobrescribieron las figuras existentes.")
+
+
 def main() -> None:
     configurar_matplotlib()
     FIGURAS_DIR.mkdir(parents=True, exist_ok=True)
@@ -492,10 +527,7 @@ def main() -> None:
     figura_distribucion_intensidades(datos_30min)
     metricas = figura_dispersion_diaria(diario)
     imprimir_metricas(metricas)
-
-    print("\nArchivos generados en:")
-    print(f"- {FIGURAS_DIR}")
-    print("Nota: los HTML se generan con Plotly y los PNG con Matplotlib; no se requiere Kaleido para esta exportación.")
+    imprimir_resumen_archivos()
 
 
 if __name__ == "__main__":
