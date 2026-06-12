@@ -1,0 +1,61 @@
+fuente,duracion_min,periodo_retorno_anios,intensidad_mm_h,metodo
+cmorph,30,2,34.23968225606981,Gumbel
+cmorph,60,2,23.328055676659694,Gumbel
+cmorph,120,2,16.24967435130181,Gumbel
+cmorph,360,2,8.525021722053614,Gumbel
+cmorph,1440,2,2.9183105659786586,Gumbel
+cmorph,30,10,59.160571167595975,Gumbel
+cmorph,60,10,34.472280642092706,Gumbel
+cmorph,120,10,25.942192707710532,Gumbel
+cmorph,360,10,14.228321445356663,Gumbel
+cmorph,1440,10,4.307506637766975,Gumbel
+cmorph,30,25,71.70355896468116,Gumbel
+cmorph,60,25,40.081305193570394,Gumbel
+cmorph,120,25,30.820555590313404,Gumbel
+cmorph,360,25,17.09886186173094,Gumbel
+cmorph,1440,25,5.00670598968658,Gumbel
+cmorph,30,2,32.13126820667437,Weibull empírico
+cmorph,60,2,21.963006220963706,Weibull empírico
+cmorph,120,2,15.20368247124863,Weibull empírico
+cmorph,360,2,8.357907782433301,Weibull empírico
+cmorph,1440,2,3.04805626211973,Weibull empírico
+cmorph,30,10,74.89089288489492,Weibull empírico
+cmorph,60,10,39.15530289778144,Weibull empírico
+cmorph,120,10,31.510255967505344,Weibull empírico
+cmorph,360,10,18.25681139691126,Weibull empírico
+cmorph,1440,10,4.761950100023705,Weibull empírico
+cmorph,30,25,,Weibull empírico
+cmorph,60,25,,Weibull empírico
+cmorph,120,25,,Weibull empírico
+cmorph,360,25,,Weibull empírico
+cmorph,1440,25,,Weibull empírico
+imerg,30,2,24.56516623723694,Gumbel
+imerg,60,2,19.4455087562998,Gumbel
+imerg,120,2,14.65765113176003,Gumbel
+imerg,360,2,7.340426667798797,Gumbel
+imerg,1440,2,2.6924550403406173,Gumbel
+imerg,30,10,40.022346549625425,Gumbel
+imerg,60,10,28.99868703906482,Gumbel
+imerg,120,10,22.260460199219214,Gumbel
+imerg,360,10,10.440563218971871,Gumbel
+imerg,1440,10,3.6960903745508586,Gumbel
+imerg,30,25,47.80213420984661,Gumbel
+imerg,60,25,33.80691836056798,Gumbel
+imerg,120,25,26.087046870957206,Gumbel
+imerg,360,25,12.000899813252701,Gumbel
+imerg,1440,25,4.201232297634518,Gumbel
+imerg,30,2,23.89543429865863,Weibull empírico
+imerg,60,2,19.56508861240409,Weibull empírico
+imerg,120,2,15.950320308267704,Weibull empírico
+imerg,360,2,7.788436516674044,Weibull empírico
+imerg,1440,2,2.8683861071008354,Weibull empírico
+imerg,30,10,49.31668801383212,Weibull empírico
+imerg,60,10,31.569744382524746,Weibull empírico
+imerg,120,10,25.660065429648707,Weibull empírico
+imerg,360,10,10.78566331751628,Weibull empírico
+imerg,1440,10,3.7670866326630885,Weibull empírico
+imerg,30,25,,Weibull empírico
+imerg,60,25,,Weibull empírico
+imerg,120,25,,Weibull empírico
+imerg,360,25,,Weibull empírico
+imerg,1440,25,,Weibull empírico

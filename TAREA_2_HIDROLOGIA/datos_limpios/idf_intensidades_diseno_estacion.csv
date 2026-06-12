@@ -1,0 +1,49 @@
+fuente,duracion_min,periodo_retorno_anios,intensidad_mm_h,metodo
+estacion,5,2,109.32406589838534,Gumbel
+estacion,10,2,89.60805678747161,Gumbel
+estacion,15,2,79.20591581792952,Gumbel
+estacion,30,2,54.19542664194058,Gumbel
+estacion,60,2,32.62240744499819,Gumbel
+estacion,120,2,18.26465557707457,Gumbel
+estacion,360,2,7.472265968909885,Gumbel
+estacion,1440,2,2.4771246539998484,Gumbel
+estacion,5,10,142.54754789452306,Gumbel
+estacion,10,10,112.42451075519995,Gumbel
+estacion,15,10,91.67016557520972,Gumbel
+estacion,30,10,62.640682961712905,Gumbel
+estacion,60,10,38.85945392051886,Gumbel
+estacion,120,10,25.286275331981617,Gumbel
+estacion,360,10,9.746815724260683,Gumbel
+estacion,1440,10,3.2255485293177815,Gumbel
+estacion,5,25,159.2693322070199,Gumbel
+estacion,10,25,123.90831073946168,Gumbel
+estacion,15,25,97.94357472848753,Gumbel
+estacion,30,25,66.89128362600813,Gumbel
+estacion,60,25,41.99863559698491,Gumbel
+estacion,120,25,28.820342323502018,Gumbel
+estacion,360,25,10.891624399686096,Gumbel
+estacion,1440,25,3.6022394077405906,Gumbel
+estacion,5,2,112.11806868409239,Weibull empírico
+estacion,10,2,90.2590343420462,Weibull empírico
+estacion,15,2,80.06344780682069,Weibull empírico
+estacion,30,2,55.28634478068208,Weibull empírico
+estacion,60,2,32.64772413011369,Weibull empírico
+estacion,120,2,17.819310325284196,Weibull empírico
+estacion,360,2,7.813632173484904,Weibull empírico
+estacion,1440,2,2.6252816030066612,Weibull empírico
+estacion,5,10,161.72983931700298,Weibull empírico
+estacion,10,10,124.25240908725166,Weibull empírico
+estacion,15,10,94.96996335300071,Weibull empírico
+estacion,30,10,63.30498731450026,Weibull empírico
+estacion,60,10,39.78999718100007,Weibull empírico
+estacion,120,10,30.114961943500706,Weibull empírico
+estacion,360,10,10.423743774708448,Weibull empírico
+estacion,1440,10,3.3363013051718893,Weibull empírico
+estacion,5,25,,Weibull empírico
+estacion,10,25,,Weibull empírico
+estacion,15,25,,Weibull empírico
+estacion,30,25,,Weibull empírico
+estacion,60,25,,Weibull empírico
+estacion,120,25,,Weibull empírico
+estacion,360,25,,Weibull empírico
+estacion,1440,25,,Weibull empírico
