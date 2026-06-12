@@ -1,0 +1,14 @@
+fuente,tipo_caudal,duracion_min,intensidad_mm_h,precipitacion_o_intensidad,unidad_precipitacion,area_km2,caudal_m3_s,comentario
+estacion,medio_anual_teorico,,,873.72,mm/anio,1768.19922074831,48.955276166508646,Limite superior anual con ET = 0 y deltaS = 0.
+estacion,pico_teorico,30.0,63.800000000000026,63.800000000000026,mm/h,1768.19922074831,31336.67021461792,Limite superior absoluto: toda la lluvia se convierte instantaneamente en escorrentia (serie_subhoraria).
+estacion,pico_teorico,60.0,39.90000000000001,39.90000000000001,mm/h,1768.19922074831,19597.698143624682,Limite superior absoluto: toda la lluvia se convierte instantaneamente en escorrentia (serie_subhoraria).
+estacion,pico_teorico,360.0,10.666666666666666,10.666666666666666,mm/h,1768.19922074831,5239.150715087632,Limite superior absoluto: toda la lluvia se convierte instantaneamente en escorrentia (serie_subhoraria).
+estacion,pico_teorico,1440.0,3.3666666666666667,3.3666666666666667,mm/h,1768.19922074831,1653.6069444495342,Limite superior absoluto: toda la lluvia se convierte instantaneamente en escorrentia (serie_subhoraria).
+imerg,pico_teorico,30.0,51.6899986,51.6899986,mm/h,1768.19922074831,25388.596230756444,Limite superior absoluto: toda la lluvia se convierte instantaneamente en escorrentia (serie_subhoraria).
+imerg,pico_teorico,60.0,31.764999400000008,31.764999400000008,mm/h,1768.19922074831,15602.0268113689,Limite superior absoluto: toda la lluvia se convierte instantaneamente en escorrentia (serie_subhoraria).
+imerg,pico_teorico,360.0,10.906666435833335,10.906666435833335,mm/h,1768.19922074831,5357.03149279861,Limite superior absoluto: toda la lluvia se convierte instantaneamente en escorrentia (serie_subhoraria).
+imerg,pico_teorico,1440.0,3.8374998920875,3.8374998920875,mm/h,1768.19922074831,1884.8662784792755,Limite superior absoluto: toda la lluvia se convierte instantaneamente en escorrentia (serie_subhoraria).
+cmorph,pico_teorico,30.0,79.06,79.06,mm/h,1768.19922074831,38831.93020639015,Limite superior absoluto: toda la lluvia se convierte instantaneamente en escorrentia (serie_subhoraria).
+cmorph,pico_teorico,60.0,39.53000000000001,39.53000000000001,mm/h,1768.19922074831,19415.965103195078,Limite superior absoluto: toda la lluvia se convierte instantaneamente en escorrentia (serie_subhoraria).
+cmorph,pico_teorico,360.0,19.504999583333333,19.504999583333333,mm/h,1768.19922074831,9580.278048262951,Limite superior absoluto: toda la lluvia se convierte instantaneamente en escorrentia (serie_subhoraria).
+cmorph,pico_teorico,1440.0,4.876249895833333,4.876249895833333,mm/h,1768.19922074831,2395.069512065738,Limite superior absoluto: toda la lluvia se convierte instantaneamente en escorrentia (serie_subhoraria).
