@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 import tempfile
+import urllib.request
 from pathlib import Path
 from zipfile import ZipFile
 
@@ -14,7 +15,7 @@ import plotly.graph_objects as go
 
 try:
     import geopandas as gpd
-    from shapely.geometry import Point
+    from shapely.geometry import Point, box
 except ImportError as exc:
     raise SystemExit(
         "Falta geopandas o una dependencia geoespacial. Instale con:\n"
@@ -41,9 +42,11 @@ CSV_COMPARACION_IDF = DATOS_LIMPIOS_DIR / "idf_comparacion_30min_o_mas.csv"
 SALIDA_GPKG = CUENCA_DIR / "cuenca_estacion_champaign.gpkg"
 SALIDA_ATRIBUTOS = CUENCA_DIR / "atributos_cuenca_champaign.csv"
 SALIDA_MAPA = CUENCA_DIR / "mapa_cuenca_estacion_champaign.png"
+SALIDA_MAPA_CONTEXTO = CUENCA_DIR / "mapa_cuenca_contexto_champaign.png"
 SALIDA_CAUDAL = CUENCA_DIR / "caudal_maximo_teorico_champaign.csv"
 FIG19_PNG = FIGURAS_DIR / "fig19_caudal_maximo_teorico_cuenca.png"
 FIG19_HTML = FIGURAS_DIR / "fig19_caudal_maximo_teorico_cuenca.html"
+FIG20_PNG = FIGURAS_DIR / "fig20_mapa_cuenca_contexto_champaign.png"
 
 LAT_ESTACION = 40.05
 LON_ESTACION = -88.37
@@ -83,7 +86,7 @@ COLUMNAS_CRNS = [
 ]
 VALORES_FALTANTES = [-99, -99.0, -9999, -9999.0, -9999.9]
 ETIQUETAS = {
-    "estacion": "Estacion CRNS",
+    "estacion": "Estación CRNS",
     "imerg": "IMERG",
     "cmorph": "CMORPH",
 }
@@ -322,6 +325,432 @@ def guardar_mapa_cuenca(cuenca: gpd.GeoDataFrame, punto: gpd.GeoDataFrame) -> No
     fig.tight_layout()
     fig.savefig(SALIDA_MAPA, bbox_inches="tight")
     plt.close(fig)
+
+
+def _columna_existente(gdf: gpd.GeoDataFrame, candidatas: list[str]) -> str | None:
+    columnas = {col.lower(): col for col in gdf.columns}
+    for candidata in candidatas:
+        if candidata.lower() in columnas:
+            return columnas[candidata.lower()]
+    return None
+
+
+def _filtrar_illinois(estados: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
+    mascara = pd.Series(False, index=estados.index)
+
+    for columna in ["name", "name_en", "region", "gn_name", "NAME", "STUSPS"]:
+        if columna not in estados.columns:
+            continue
+        valores = estados[columna].astype(str).str.lower()
+        mascara = mascara | valores.isin(["illinois", "il"])
+
+    for columna in ["postal", "iso_3166_2", "HASC_1"]:
+        if columna not in estados.columns:
+            continue
+        valores = estados[columna].astype(str).str.upper()
+        mascara = mascara | valores.str.endswith("-IL") | valores.eq("IL")
+
+    mascara_pais = pd.Series(True, index=estados.index)
+    columnas_pais = ["admin", "geonunit", "adm0_a3", "country", "CNTRY_NAME"]
+    columna_pais = _columna_existente(estados, columnas_pais)
+    if columna_pais is not None:
+        valores_pais = estados[columna_pais].astype(str).str.lower()
+        mascara_pais = (
+            valores_pais.isin(["usa", "us", "united states", "united states of america"])
+            | valores_pais.str.contains("united states", na=False)
+        )
+
+    return estados[mascara & mascara_pais].copy()
+
+
+def _rutas_estados_locales() -> list[Path]:
+    nombres = [
+        "ne_10m_admin_1_states_provinces_lakes.shp",
+        "ne_50m_admin_1_states_provinces_lakes.shp",
+        "ne_110m_admin_1_states_provinces_lakes.shp",
+    ]
+    raices = [
+        CUENCA_DIR,
+        HYDROBASINS_RAW_DIR,
+        Path.home() / ".local" / "share" / "cartopy",
+        Path.home() / ".cartopy",
+        Path.home() / "AppData" / "Local" / "cartopy",
+        Path.home() / "AppData" / "Roaming" / "cartopy",
+    ]
+
+    rutas: list[Path] = []
+    for raiz in raices:
+        if not raiz.exists():
+            continue
+        for nombre in nombres:
+            rutas.extend(raiz.rglob(nombre))
+        rutas.extend(raiz.rglob("tl_*_us_state.shp"))
+        rutas.extend(raiz.rglob("cb_*_us_state_*.shp"))
+    return sorted(dict.fromkeys(rutas))
+
+
+def validar_geometria_illinois(illinois: gpd.GeoDataFrame, fuente: str) -> None:
+    if illinois.empty:
+        raise ValueError(f"La fuente no contiene Illinois: {fuente}")
+    if not bool(illinois.geometry.is_valid.all()):
+        illinois.geometry = illinois.geometry.make_valid()
+    minx, miny, maxx, maxy = illinois.total_bounds
+    if not (-92.2 <= minx <= -87.0 and -92.0 <= maxx <= -87.0):
+        raise ValueError(f"Bounds de longitud no razonables para Illinois en {fuente}: {illinois.total_bounds}")
+    if not (36.0 <= miny <= 38.0 and 41.5 <= maxy <= 43.2):
+        raise ValueError(f"Bounds de latitud no razonables para Illinois en {fuente}: {illinois.total_bounds}")
+    geom = union_geometrias(illinois.geometry)
+    if geom.equals_exact(box(minx, miny, maxx, maxy), tolerance=1e-6):
+        raise ValueError(f"La geometria de Illinois parece ser un rectangulo en {fuente}")
+
+
+def normalizar_estados_reales(estados: gpd.GeoDataFrame, fuente: str) -> tuple[gpd.GeoDataFrame, gpd.GeoDataFrame, str]:
+    if estados.empty:
+        raise ValueError(f"La fuente esta vacia: {fuente}")
+    if estados.crs is None:
+        estados = estados.set_crs(CRS_GEOGRAFICO)
+    estados = estados.to_crs(CRS_GEOGRAFICO)
+    illinois = _filtrar_illinois(estados)
+    validar_geometria_illinois(illinois, fuente)
+    return estados, illinois, fuente
+
+
+def cargar_estados_desde_geodatasets() -> tuple[gpd.GeoDataFrame, gpd.GeoDataFrame, str]:
+    import geodatasets
+
+    ruta = geodatasets.get_path("geoda.us_sdoh")
+    estados = gpd.read_file(ruta)
+    return normalizar_estados_reales(estados, f"geodatasets: {ruta}")
+
+
+def cargar_estados_desde_cartopy() -> tuple[gpd.GeoDataFrame, gpd.GeoDataFrame, str]:
+    from cartopy.io import shapereader
+
+    ruta = shapereader.natural_earth(
+        resolution="10m",
+        category="cultural",
+        name="admin_1_states_provinces_lakes",
+    )
+    estados = gpd.read_file(ruta)
+    return normalizar_estados_reales(estados, f"Cartopy Natural Earth: {ruta}")
+
+
+def cargar_estados_desde_tiger() -> tuple[gpd.GeoDataFrame, gpd.GeoDataFrame, str]:
+    url = "https://www2.census.gov/geo/tiger/GENZ2023/shp/cb_2023_us_state_500k.zip"
+    with tempfile.TemporaryDirectory(prefix="tiger_states_") as temp_dir:
+        zip_path = Path(temp_dir) / "cb_2023_us_state_500k.zip"
+        urllib.request.urlretrieve(url, zip_path)
+        estados = gpd.read_file(f"zip://{zip_path}")
+        return normalizar_estados_reales(estados, f"TIGER/Line US Census: {url}")
+
+
+def cargar_limite_illinois_real() -> tuple[gpd.GeoDataFrame | None, gpd.GeoDataFrame, str]:
+    errores = []
+    for ruta in _rutas_estados_locales():
+        try:
+            estados = gpd.read_file(ruta)
+            return normalizar_estados_reales(estados, f"shapefile local: {ruta}")
+        except Exception as exc:
+            errores.append(f"{ruta}: {exc}")
+
+    for cargador in [
+        cargar_estados_desde_geodatasets,
+        cargar_estados_desde_cartopy,
+        cargar_estados_desde_tiger,
+    ]:
+        try:
+            return cargador()
+        except Exception as exc:
+            errores.append(f"{cargador.__name__}: {exc}")
+
+    print("ERROR: No se pudo cargar un límite real de Illinois. No se genera mapa regional.")
+    if errores:
+        print("- Detalles de fuentes intentadas:")
+        for error in errores:
+            print(f"  {error}")
+    raise SystemExit(1)
+
+
+def agregar_flecha_norte(ax: plt.Axes) -> None:
+    ax.annotate(
+        "N",
+        xy=(0.94, 0.88),
+        xytext=(0.94, 0.76),
+        xycoords="axes fraction",
+        ha="center",
+        va="center",
+        arrowprops=dict(arrowstyle="-|>", lw=1.4, color="black"),
+        fontsize=12,
+        fontweight="bold",
+    )
+
+
+def union_geometrias(geometria: gpd.GeoSeries):
+    if hasattr(geometria, "union_all"):
+        return geometria.union_all()
+    return geometria.unary_union
+
+
+def guardar_mapa_cuenca_contexto(
+    cuenca: gpd.GeoDataFrame, punto: gpd.GeoDataFrame
+) -> str | None:
+    raise RuntimeError(
+        "Funcion obsoleta: use guardar_mapa_cuenca_contexto_illinois, "
+        "que exige un limite real de Illinois."
+    )
+    cuenca_geo = cuenca.to_crs(CRS_GEOGRAFICO)
+    punto_geo = punto.to_crs(CRS_GEOGRAFICO)
+    illinois = None
+    advertencia_limite = None
+
+    minx, miny, maxx, maxy = cuenca_geo.total_bounds
+    margen_x = max((maxx - minx) * 0.35, 0.08)
+    margen_y = max((maxy - miny) * 0.35, 0.08)
+    rect_cuenca = box(minx - margen_x, miny - margen_y, maxx + margen_x, maxy + margen_y)
+
+    fig, (ax_regional, ax_detalle) = plt.subplots(1, 2, figsize=(13.5, 6.2))
+    fig.suptitle(
+        "Ubicación de la cuenca HydroBASINS asociada a la estación CRNS Champaign",
+        fontsize=14,
+        fontweight="bold",
+        y=0.98,
+    )
+
+    ax_regional.set_title("A) Ubicación regional")
+    if illinois is not None:
+        illinois.plot(
+            ax=ax_regional,
+            facecolor="#f2f2f2",
+            edgecolor="#636363",
+            linewidth=1.2,
+            zorder=1,
+        )
+
+    gpd.GeoSeries([rect_cuenca], crs=CRS_GEOGRAFICO).plot(
+        ax=ax_regional,
+        facecolor="none",
+        edgecolor="#238b45",
+        linewidth=1.8,
+        zorder=3,
+    )
+    cuenca_geo.plot(
+        ax=ax_regional,
+        facecolor="#d9f0d3",
+        edgecolor="#238b45",
+        linewidth=1.0,
+        zorder=4,
+    )
+    punto_geo.plot(
+        ax=ax_regional,
+        color="#d7301f",
+        markersize=65,
+        marker="*",
+        zorder=5,
+    )
+    ax_regional.text(-89.4, 41.4, "Illinois", fontsize=10, color="#4d4d4d")
+    ax_regional.annotate(
+        "Champaign",
+        xy=(LON_ESTACION, LAT_ESTACION),
+        xytext=(-87.7, 40.55),
+        arrowprops=dict(arrowstyle="->", lw=0.9, color="#4d4d4d"),
+        fontsize=9,
+        color="#4d4d4d",
+    )
+    ax_regional.set_xlim(-92, -84)
+    ax_regional.set_ylim(36, 43)
+    ax_regional.set_xlabel("Longitud")
+    ax_regional.set_ylabel("Latitud")
+    ax_regional.grid(True, alpha=0.25)
+    ax_regional.set_aspect("equal", adjustable="box")
+
+    ax_detalle.set_title("B) Cuenca HydroBASINS nivel 7")
+    cuenca_geo.plot(
+        ax=ax_detalle,
+        facecolor="#d9f0d3",
+        edgecolor="#238b45",
+        linewidth=1.8,
+        zorder=2,
+    )
+    punto_geo.plot(
+        ax=ax_detalle,
+        color="#d7301f",
+        markersize=70,
+        marker="*",
+        zorder=3,
+    )
+    ax_detalle.annotate(
+        "Estación CRNS",
+        xy=(LON_ESTACION, LAT_ESTACION),
+        xytext=(LON_ESTACION + 0.04, LAT_ESTACION + 0.035),
+        arrowprops=dict(arrowstyle="->", lw=0.9, color="#4d4d4d"),
+        fontsize=9,
+        color="#4d4d4d",
+    )
+    ax_detalle.set_xlim(minx - margen_x, maxx + margen_x)
+    ax_detalle.set_ylim(miny - margen_y, maxy + margen_y)
+    ax_detalle.set_xlabel("Longitud")
+    ax_detalle.set_ylabel("Latitud")
+    ax_detalle.grid(True, alpha=0.25)
+    ax_detalle.set_aspect("equal", adjustable="box")
+    agregar_flecha_norte(ax_detalle)
+
+    leyenda = [
+        Patch(facecolor="#d9f0d3", edgecolor="#238b45", label="Cuenca HydroBASINS"),
+        Line2D(
+        [0],
+        [0],
+        marker="*",
+        color="w",
+        markerfacecolor="#d7301f",
+        markeredgecolor="#d7301f",
+        markersize=11,
+        label="Estación CRNS",
+    ),
+    ]
+    fig.legend(handles=leyenda, loc="lower center", ncol=2, frameon=False)
+    fig.tight_layout(rect=[0, 0.07, 1, 0.94])
+    fig.savefig(SALIDA_MAPA_CONTEXTO, bbox_inches="tight", dpi=300, facecolor="white")
+    fig.savefig(FIG20_PNG, bbox_inches="tight", dpi=300, facecolor="white")
+    plt.close(fig)
+    return advertencia_limite
+
+
+def guardar_mapa_cuenca_contexto_illinois(
+    cuenca: gpd.GeoDataFrame, punto: gpd.GeoDataFrame
+) -> tuple[str, np.ndarray, np.ndarray]:
+    cuenca_geo = cuenca.to_crs(CRS_GEOGRAFICO)
+    punto_geo = punto.to_crs(CRS_GEOGRAFICO)
+    estados, illinois, fuente_limite = cargar_limite_illinois_real()
+    bounds_illinois = illinois.total_bounds
+    bounds_cuenca = cuenca_geo.total_bounds
+
+    minx, miny, maxx, maxy = cuenca_geo.total_bounds
+    margen_x = max((maxx - minx) * 0.35, 0.08)
+    margen_y = max((maxy - miny) * 0.35, 0.08)
+    rect_cuenca = box(minx - margen_x, miny - margen_y, maxx + margen_x, maxy + margen_y)
+
+    fig, (ax_regional, ax_detalle) = plt.subplots(1, 2, figsize=(13.5, 6.2))
+    fig.suptitle(
+        "Ubicación de la cuenca HydroBASINS asociada a la estación CRNS Champaign",
+        fontsize=14,
+        fontweight="bold",
+        y=0.98,
+    )
+
+    ax_regional.set_title("A) Ubicación en Illinois")
+    if estados is not None:
+        estados_mw = estados.cx[-93.5:-84.0, 36.0:43.5].copy()
+        estados_mw.plot(
+            ax=ax_regional,
+            facecolor="#f7f7f7",
+            edgecolor="#bdbdbd",
+            linewidth=0.7,
+            zorder=1,
+        )
+
+    illinois.plot(
+        ax=ax_regional,
+        facecolor="#f2f2f2",
+        edgecolor="#252525",
+        linewidth=1.4,
+        zorder=2,
+    )
+    gpd.GeoSeries([rect_cuenca], crs=CRS_GEOGRAFICO).plot(
+        ax=ax_regional,
+        facecolor="none",
+        edgecolor="#238b45",
+        linewidth=2.0,
+        zorder=3,
+    )
+    cuenca_geo.plot(
+        ax=ax_regional,
+        facecolor="#d9f0d3",
+        edgecolor="#238b45",
+        linewidth=1.5,
+        zorder=4,
+    )
+    punto_geo.plot(
+        ax=ax_regional,
+        color="#d7301f",
+        markersize=65,
+        marker="*",
+        zorder=5,
+    )
+
+    centro_illinois = union_geometrias(illinois.geometry).representative_point()
+    ax_regional.text(
+        centro_illinois.x,
+        centro_illinois.y + 0.7,
+        "Illinois",
+        fontsize=10,
+        ha="center",
+        color="#4d4d4d",
+    )
+    ax_regional.annotate(
+        "Champaign",
+        xy=(LON_ESTACION, LAT_ESTACION),
+        xytext=(-87.7, 40.55),
+        arrowprops=dict(arrowstyle="->", lw=0.9, color="#4d4d4d"),
+        fontsize=9,
+        color="#4d4d4d",
+    )
+    ax_regional.set_xlim(-92, -87)
+    ax_regional.set_ylim(36.5, 43)
+    ax_regional.set_xlabel("Longitud")
+    ax_regional.set_ylabel("Latitud")
+    ax_regional.grid(True, alpha=0.25)
+    ax_regional.set_aspect("equal", adjustable="box")
+
+    ax_detalle.set_title("B) Cuenca HydroBASINS nivel 7")
+    cuenca_geo.plot(
+        ax=ax_detalle,
+        facecolor="#d9f0d3",
+        edgecolor="#238b45",
+        linewidth=1.8,
+        zorder=2,
+    )
+    punto_geo.plot(
+        ax=ax_detalle,
+        color="#d7301f",
+        markersize=70,
+        marker="*",
+        zorder=3,
+    )
+    ax_detalle.annotate(
+        "Estación CRNS",
+        xy=(LON_ESTACION, LAT_ESTACION),
+        xytext=(LON_ESTACION + 0.04, LAT_ESTACION + 0.035),
+        arrowprops=dict(arrowstyle="->", lw=0.9, color="#4d4d4d"),
+        fontsize=9,
+        color="#4d4d4d",
+    )
+    ax_detalle.set_xlim(minx - margen_x, maxx + margen_x)
+    ax_detalle.set_ylim(miny - margen_y, maxy + margen_y)
+    ax_detalle.set_xlabel("Longitud")
+    ax_detalle.set_ylabel("Latitud")
+    ax_detalle.grid(True, alpha=0.25)
+    ax_detalle.set_aspect("equal", adjustable="box")
+    agregar_flecha_norte(ax_detalle)
+
+    leyenda = [
+        Patch(facecolor="#d9f0d3", edgecolor="#238b45", label="Cuenca HydroBASINS"),
+        Line2D(
+            [0],
+            [0],
+            marker="*",
+            color="w",
+            markerfacecolor="#d7301f",
+            markeredgecolor="#d7301f",
+            markersize=11,
+            label="Estación CRNS",
+        ),
+    ]
+    fig.legend(handles=leyenda, loc="lower center", ncol=2, frameon=False)
+    fig.tight_layout(rect=[0, 0.07, 1, 0.94])
+    fig.savefig(SALIDA_MAPA_CONTEXTO, bbox_inches="tight", dpi=300, facecolor="white")
+    fig.savefig(FIG20_PNG, bbox_inches="tight", dpi=300, facecolor="white")
+    plt.close(fig)
+    return fuente_limite, bounds_illinois, bounds_cuenca
 
 
 def detectar_columna_fecha(df: pd.DataFrame) -> str:
@@ -739,50 +1168,27 @@ def main() -> None:
     CUENCA_DIR.mkdir(parents=True, exist_ok=True)
     FIGURAS_DIR.mkdir(parents=True, exist_ok=True)
 
-    temp_dir = None
-    try:
-        cuencas, archivo_hydro, nivel, temp_dir = leer_hydrobasins()
-        punto = crear_punto_estacion()
-        cuenca, metodo = seleccionar_cuenca(cuencas, punto)
-        if metodo != "contains":
-            print(
-                f"Advertencia: la cuenca se selecciono con {metodo}; "
-                "el punto pudo caer en un borde o fuera de los poligonos."
-            )
+    if not SALIDA_GPKG.exists():
+        raise FileNotFoundError(f"No se encontro la cuenca seleccionada: {SALIDA_GPKG}")
 
-        cuenca_salida, atributos = enriquecer_atributos_cuenca(cuenca, nivel)
-        area_km2 = float(atributos["area_calculada_km2"].iloc[0])
+    cuenca = gpd.read_file(SALIDA_GPKG)
+    if cuenca.empty:
+        raise ValueError(f"El archivo de cuenca esta vacio: {SALIDA_GPKG}")
+    if cuenca.crs is None:
+        cuenca = cuenca.set_crs(CRS_GEOGRAFICO)
 
-        cuenca_salida.to_file(SALIDA_GPKG, driver="GPKG")
-        atributos.to_csv(SALIDA_ATRIBUTOS, index=False)
-        guardar_mapa_cuenca(cuenca_salida, punto)
+    punto = crear_punto_estacion()
+    fuente_limite, bounds_illinois, bounds_cuenca = guardar_mapa_cuenca_contexto_illinois(
+        cuenca, punto
+    )
 
-        p_media_anual_mm = precipitacion_media_anual_estacion()
-        maximos, advertencias = maximos_observados_por_fuente()
-        tabla_caudal = construir_tabla_caudales(area_km2, p_media_anual_mm, maximos)
-        tabla_caudal.to_csv(SALIDA_CAUDAL, index=False)
-        guardar_fig19(tabla_caudal)
-
-        archivos = [
-            SALIDA_GPKG,
-            SALIDA_ATRIBUTOS,
-            SALIDA_MAPA,
-            SALIDA_CAUDAL,
-            FIG19_PNG,
-            FIG19_HTML,
-        ]
-        imprimir_resumen(
-            archivo_hydro,
-            nivel,
-            atributos,
-            p_media_anual_mm,
-            tabla_caudal,
-            advertencias,
-            archivos,
-        )
-    finally:
-        if temp_dir is not None:
-            temp_dir.cleanup()
+    print("\nMapa de contexto de la cuenca")
+    print(f"- Archivo de cuenca usado: {SALIDA_GPKG}")
+    print(f"- Fuente geografica del limite de Illinois: {fuente_limite}")
+    print(f"- Bounds del poligono de Illinois: {bounds_illinois}")
+    print(f"- Bounds de la cuenca: {bounds_cuenca}")
+    print(f"- Nuevo mapa generado: {SALIDA_MAPA_CONTEXTO}")
+    print(f"- Copia para informe generada: {FIG20_PNG}")
 
 
 if __name__ == "__main__":

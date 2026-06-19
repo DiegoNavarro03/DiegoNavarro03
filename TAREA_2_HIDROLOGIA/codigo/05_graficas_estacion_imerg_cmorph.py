@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 
 BASE_DIR = Path(__file__).resolve().parents[1]
@@ -288,15 +289,22 @@ def suavizar_histograma(valores: pd.Series, limite: float, n_bins: int = 55) -> 
 
 def figura_serie_diaria(diario: pd.DataFrame) -> None:
     nombre = "fig01_serie_diaria_estacion_imerg_cmorph"
-    titulo = f"Serie diaria de precipitación: estación CRNS, IMERG y CMORPH ({PERIODO_TEXTO})"
+    titulo = f"Promedio mensual de precipitación diaria: estación CRNS, IMERG y CMORPH ({PERIODO_TEXTO})"
+    mensual_promedio = (
+        diario.assign(fecha=pd.to_datetime(diario["fecha"]))
+        .set_index("fecha")[["estacion_mm", "imerg_mm", "cmorph_mm"]]
+        .resample("MS")
+        .mean()
+        .reset_index()
+    )
 
     fig, ax = plt.subplots(figsize=(12.5, 4.8))
-    ax.plot(diario["fecha"], diario["estacion_mm"], color=COLORES["estacion"], lw=1.05, label="Estación CRNS")
-    ax.plot(diario["fecha"], diario["imerg_mm"], color=COLORES["imerg"], lw=1.0, alpha=0.85, label="IMERG")
-    ax.plot(diario["fecha"], diario["cmorph_mm"], color=COLORES["cmorph"], lw=1.0, alpha=0.85, label="CMORPH")
+    ax.plot(mensual_promedio["fecha"], mensual_promedio["estacion_mm"], color=COLORES["estacion"], marker="o", ms=3, lw=1.45, label="Estación CRNS")
+    ax.plot(mensual_promedio["fecha"], mensual_promedio["imerg_mm"], color=COLORES["imerg"], marker="o", ms=3, lw=1.45, alpha=0.9, label="IMERG")
+    ax.plot(mensual_promedio["fecha"], mensual_promedio["cmorph_mm"], color=COLORES["cmorph"], marker="o", ms=3, lw=1.45, alpha=0.9, label="CMORPH")
     ax.set_title(titulo)
-    ax.set_xlabel("Fecha")
-    ax.set_ylabel("Precipitación diaria (mm/día)")
+    ax.set_xlabel("Mes")
+    ax.set_ylabel("Promedio mensual (mm/día)")
     ax.legend(loc="upper right")
     ax.xaxis.set_major_locator(mdates.YearLocator())
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y"))
@@ -306,18 +314,88 @@ def figura_serie_diaria(diario: pd.DataFrame) -> None:
     plt.close(fig)
 
     fig_html = go.Figure()
-    fig_html.add_trace(go.Scatter(x=diario["fecha"], y=diario["estacion_mm"], mode="lines", name="Estación CRNS", line=dict(color=COLORES["estacion"])))
-    fig_html.add_trace(go.Scatter(x=diario["fecha"], y=diario["imerg_mm"], mode="lines", name="IMERG", line=dict(color=COLORES["imerg"])))
-    fig_html.add_trace(go.Scatter(x=diario["fecha"], y=diario["cmorph_mm"], mode="lines", name="CMORPH", line=dict(color=COLORES["cmorph"])))
+    for columna, color in [("estacion_mm", COLORES["estacion"]), ("imerg_mm", COLORES["imerg"]), ("cmorph_mm", COLORES["cmorph"])]:
+        fig_html.add_trace(
+            go.Scatter(
+                x=mensual_promedio["fecha"],
+                y=mensual_promedio[columna],
+                mode="lines+markers",
+                name=ETIQUETAS[columna],
+                line=dict(color=color),
+                hovertemplate="%{x|%Y-%m}<br>%{y:.2f} mm/día<extra>%{fullData.name}</extra>",
+            )
+        )
     aplicar_layout_plotly(fig_html, titulo)
-    fig_html.update_xaxes(title_text="Fecha")
-    fig_html.update_yaxes(title_text="Precipitación diaria (mm/día)")
+    fig_html.update_xaxes(title_text="Mes")
+    fig_html.update_yaxes(title_text="Promedio mensual (mm/día)")
+    guardar_html(fig_html, nombre)
+
+    corr_imerg = mensual_promedio["estacion_mm"].corr(mensual_promedio["imerg_mm"])
+    corr_cmorph = mensual_promedio["estacion_mm"].corr(mensual_promedio["cmorph_mm"])
+    mayor = mensual_promedio.loc[mensual_promedio["estacion_mm"].idxmax()]
+    print("\nFigura 1 - Promedio mensual por año")
+    print("- Pregunta: ¿Qué tanto IMERG y CMORPH reproducen la variabilidad mensual observada por la estación?")
+    print(f"- Patrón principal: el mayor promedio mensual observado fue {mayor['estacion_mm']:.2f} mm/día en {mayor['fecha']:%Y-%m}.")
+    print(f"- Evidencia: correlación mensual estación-IMERG = {corr_imerg:.3f}; estación-CMORPH = {corr_cmorph:.3f}.")
+
+
+def figura_series_diarias_apiladas(diario: pd.DataFrame) -> None:
+    nombre = "fig0101_series_diarias_apiladas_estacion_imerg_cmorph"
+    titulo = f"Series diarias de precipitación por fuente: estación CRNS, IMERG y CMORPH ({PERIODO_TEXTO})"
+    series = [
+        ("estacion_mm", "Estación CRNS", COLORES["estacion"]),
+        ("imerg_mm", "IMERG", COLORES["imerg"]),
+        ("cmorph_mm", "CMORPH", COLORES["cmorph"]),
+    ]
+    limite_y = diario[["estacion_mm", "imerg_mm", "cmorph_mm"]].max(skipna=True).max() * 1.05
+
+    fig, ejes = plt.subplots(3, 1, figsize=(12.5, 8.0), sharex=True)
+    for ax, (columna, etiqueta, color) in zip(ejes, series):
+        ax.plot(diario["fecha"], diario[columna], color=color, lw=0.75, alpha=0.85)
+        ax.set_title(etiqueta, loc="left", fontsize=10, fontweight="bold")
+        ax.set_ylabel("mm/día")
+        ax.set_ylim(0, limite_y)
+        ax.grid(True, alpha=0.25)
+    ejes[-1].set_xlabel("Fecha")
+    ejes[-1].xaxis.set_major_locator(mdates.YearLocator())
+    ejes[-1].xaxis.set_major_formatter(mdates.DateFormatter("%Y"))
+    fig.suptitle(titulo, y=0.995)
+    fig.autofmt_xdate()
+    fig.tight_layout(rect=[0, 0, 1, 0.97])
+    fig.savefig(FIGURAS_DIR / f"{nombre}.png", bbox_inches="tight")
+    plt.close(fig)
+
+    fig_html = make_subplots(
+        rows=3,
+        cols=1,
+        shared_xaxes=True,
+        subplot_titles=[etiqueta for _, etiqueta, _ in series],
+        vertical_spacing=0.08,
+    )
+    for fila, (columna, etiqueta, color) in enumerate(series, start=1):
+        fig_html.add_trace(
+            go.Scatter(
+                x=diario["fecha"],
+                y=diario[columna],
+                mode="lines",
+                name=etiqueta,
+                line=dict(color=color, width=1),
+                hovertemplate="%{x|%Y-%m-%d}<br>%{y:.2f} mm/día<extra>%{fullData.name}</extra>",
+            ),
+            row=fila,
+            col=1,
+        )
+    aplicar_layout_plotly(fig_html, titulo)
+    fig_html.update_layout(height=850)
+    fig_html.update_xaxes(title_text="Fecha", row=3, col=1)
+    for fila in range(1, 4):
+        fig_html.update_yaxes(title_text="mm/día", range=[0, limite_y], row=fila, col=1)
     guardar_html(fig_html, nombre)
 
     corr_imerg = diario["estacion_mm"].corr(diario["imerg_mm"])
     corr_cmorph = diario["estacion_mm"].corr(diario["cmorph_mm"])
     mayor = diario.loc[diario["estacion_mm"].idxmax()]
-    print("\nFigura 1 - Serie diaria completa")
+    print("\nFigura 1 - Series diarias apiladas")
     print("- Pregunta: ¿Qué tanto IMERG y CMORPH reproducen la variabilidad diaria observada por la estación?")
     print(f"- Patrón principal: el evento diario máximo observado fue {mayor['estacion_mm']:.2f} mm el {mayor['fecha'].date()}.")
     print(f"- Evidencia: correlación diaria estación-IMERG = {corr_imerg:.3f}; estación-CMORPH = {corr_cmorph:.3f}.")
@@ -502,6 +580,7 @@ def imprimir_resumen_archivos() -> None:
         "fig03_ciclo_diurno_estacion_imerg_cmorph",
         "fig04_distribucion_intensidades_estacion_imerg_cmorph",
         "fig05_dispersion_diaria_estacion_imerg_cmorph",
+        "fig0101_series_diarias_apiladas_estacion_imerg_cmorph",
     ]
     print("\nArchivos regenerados")
     for nombre in archivos:
@@ -522,6 +601,7 @@ def main() -> None:
     datos_30min = combinar_30min(estacion_30min, imerg_30min, cmorph_30min)
 
     figura_serie_diaria(diario)
+    figura_series_diarias_apiladas(diario)
     figura_acumulado_mensual(mensual)
     figura_ciclo_diurno(datos_30min)
     figura_distribucion_intensidades(datos_30min)
