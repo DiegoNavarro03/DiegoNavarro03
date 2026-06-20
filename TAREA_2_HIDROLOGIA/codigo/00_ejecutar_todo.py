@@ -9,6 +9,7 @@ SCRIPTS = [
     "04_limpieza_estacion_imerg_cmorph.py",
     "05_graficas_estacion_imerg_cmorph.py",
     "06_anomalias_memoria.py",
+    "11_analisis_espectral.py",
     "07_analisis_precipitacion_anual.py",
     "08_analisis_ciclo_diurno.py",
     "09_curvas_idf_empiricas.py",

@@ -34,7 +34,8 @@ El objetivo de esta tarea fue caracterizar la variabilidad temporal de la precip
 - `codigo/`: scripts de procesamiento, analisis y generacion de figuras.
 - `DATOS_PREC/`: datos originales o de entrada organizados por fuente.
 - `datos_limpios/`: CSV procesados y listos para analisis.
-- `figuras/`: figuras PNG y HTML generadas para el informe.
+- `figuras/`: figuras PNG generadas para el informe.
+- `html/`: figuras interactivas HTML generadas como apoyo.
 - `cuenca/`: archivos HydroBASINS, cuenca seleccionada, mapa y caudales teoricos.
 - `informe/`: informe final de la tarea.
 
@@ -56,6 +57,15 @@ El proyecto se reproduce mediante scripts numerados que deben ejecutarse en orde
 
 - Calcula anomalias mensuales.
 - Evalua memoria temporal mediante autocorrelacion de la serie mensual y de las anomalias.
+
+### `11_analisis_espectral.py`
+
+- Agrega la serie diaria a promedio mensual para reducir la saturacion del espectro.
+- Aplica analisis espectral de Fourier a estacion CRNS, IMERG y CMORPH.
+- Remueve la media antes de la transformada.
+- Convierte frecuencia a periodo en dias.
+- Resalta periodos hidrologicamente relevantes: anual, semestral y escala mensual orientativa.
+- Genera una figura PNG, una figura HTML interactiva y una tabla de picos dominantes.
 
 ### `07_analisis_precipitacion_anual.py`
 
@@ -110,10 +120,18 @@ Para reproducir todo el flujo:
 py "TAREA_2_HIDROLOGIA/codigo/00_ejecutar_todo.py"
 ```
 
+Este comando debe ejecutarse desde la carpeta raiz del repositorio, es decir, desde el directorio que contiene la carpeta `TAREA_2_HIDROLOGIA/`.
+
 Para ejecutar un script individual:
 
 ```bash
 py "TAREA_2_HIDROLOGIA/codigo/04_limpieza_estacion_imerg_cmorph.py"
+```
+
+Por ejemplo, para regenerar solo el bonus de Fourier:
+
+```bash
+py "TAREA_2_HIDROLOGIA/codigo/11_analisis_espectral.py"
 ```
 
 ## Resultados principales
@@ -148,6 +166,15 @@ py "TAREA_2_HIDROLOGIA/codigo/04_limpieza_estacion_imerg_cmorph.py"
 - IMERG reproduce mejor las anomalias mensuales: correlacion = 0.854, RMSE = 21.12 mm.
 - CMORPH: correlacion = 0.790, RMSE = 25.47 mm.
 - Persistencia media absoluta rezagos 1-3: serie completa = 0.088, anomalias = 0.104.
+
+### Analisis espectral de Fourier
+
+- Se uso el promedio mensual de la precipitacion diaria para evitar la saturacion del espectro diario.
+- Periodo dominante estacion CRNS: 365.25 dias.
+- Periodo dominante IMERG: 365.25 dias.
+- Periodo dominante CMORPH: 365.25 dias.
+- El ciclo anual aparece como senal dominante en las tres fuentes.
+- La referencia de 30 dias se conserva solo como escala hidrologica orientativa porque el analisis mensual resuelve mejor ciclos de dos meses o mas.
 
 ### IDF y sumidero
 
@@ -207,6 +234,7 @@ Figuras recomendadas para el informe:
 - `fig15_ciclo_diurno_mes_hora_estacion_crns`
 - `fig16_curvas_idf_estacion_crns`
 - `fig17_comparacion_idf_estacion_imerg_cmorph`
+- `fig21_analisis_espectral_precipitacion`
 - `fig19_caudal_maximo_teorico_cuenca`
 - `mapa_cuenca_estacion_champaign`
 
@@ -236,5 +264,7 @@ El flujo genera:
 
 - CSV limpios en `datos_limpios/`.
 - Figuras en `figuras/`.
+- Figuras interactivas en `html/`.
 - Resultados de cuenca en `cuenca/`.
 - Tablas de IDF y caudal teorico.
+- Tabla de picos espectrales en `datos_limpios/analisis_espectral_picos.csv`.
