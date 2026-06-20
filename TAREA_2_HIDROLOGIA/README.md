@@ -1,225 +1,153 @@
-# Tarea 2 - Variabilidad temporal de la precipitacion
+# Tarea 2 - Hidrologia
 
-## Objetivo
+Este proyecto analiza la variabilidad temporal de la precipitacion en Champaign, Illinois, comparando una estacion terrestre CRNS con los productos satelitales IMERG y CMORPH para el periodo 2015-2024.
 
-El objetivo de esta tarea fue caracterizar la variabilidad temporal de la precipitacion en Champaign, Illinois, comparando una estacion terrestre subhoraria con los productos satelitales IMERG y CMORPH. Ademas, se construyeron curvas IDF empiricas, se analizo una cuenca HydroBASINS asociada a la estacion y se calculo un caudal maximo teorico como limite superior hidrologico.
+El README esta pensado como guia de reproduccion: explica que carpetas se usan, que datos quedaron en la entrega actual y que comandos ejecutar.
 
-## Sitio de estudio
+## Estructura actual
 
-- Estacion: CRNS IL Champaign 9 SW.
-- Ubicacion: Champaign, Illinois, Estados Unidos.
-- Coordenadas aproximadas: 40.05, -88.37.
-- Justificacion: se selecciono porque cuenta con datos subhorarios de precipitacion y esta dentro de la cobertura de IMERG y CMORPH.
+- `codigo/`: scripts numerados de procesamiento y analisis.
+- `datos_limpios/`: tablas CSV procesadas que quedaron disponibles para reproducir los analisis principales.
+- `figuras/`: figuras PNG y HTML ya generadas para el informe.
+- `cuenca/`: resultados ya generados de la delimitacion de cuenca y caudal teorico.
+- `informe/`: material del informe final.
 
-## Fuentes de datos
+Nota importante: la carpeta de datos originales `DATOS_PREC/` fue retirada de la version actual. Por eso, los scripts que dependen de datos crudos no pueden ejecutarse desde cero a menos que se vuelva a agregar esa carpeta con la estructura esperada.
 
-- Estacion CRNS: datos subhorarios de precipitacion.
-- IMERG GPM: precipitacion satelital con resolucion temporal de 30 minutos.
-- CMORPH NOAA: precipitacion satelital con resolucion temporal de 30 minutos.
-- HydroBASINS/HydroSHEDS: poligonos de cuencas usados para delimitar la cuenca asociada a la estacion.
+## Dependencias
 
-## Periodo de analisis
-
-- Periodo oficial: 2015-01-01 a 2024-12-31.
-- Numero de anos: 10.
-- Numero de dias del periodo: 3653.
-- Numero de dias comunes entre estacion, IMERG y CMORPH: 3314.
-- Porcentaje de datos faltantes:
-  - Estacion CRNS: 9.28%.
-  - IMERG: 0.00%.
-  - CMORPH: 0.00%.
-
-## Estructura de carpetas
-
-- `codigo/`: scripts de procesamiento, analisis y generacion de figuras.
-- `DATOS_PREC/`: datos originales o de entrada organizados por fuente.
-- `datos_limpios/`: CSV procesados y listos para analisis.
-- `figuras/`: figuras PNG generadas para el informe.
-- `html/`: figuras interactivas HTML generadas como apoyo.
-- `cuenca/`: archivos HydroBASINS, cuenca seleccionada, mapa y caudales teoricos.
-- `informe/`: informe final de la tarea.
-
-## Flujo de trabajo
-
-El proyecto se reproduce mediante scripts numerados que deben ejecutarse en orden.
-
-### `04_limpieza_estacion_imerg_cmorph.py`
-
-- Limpia y homogeniza la informacion de estacion, IMERG y CMORPH.
-- Genera series comparables en escalas diaria y mensual.
-
-### `05_graficas_estacion_imerg_cmorph.py`
-
-- Genera figuras base de comparacion temporal.
-- Incluye serie diaria, acumulados mensuales, distribucion de intensidades y dispersion diaria.
-
-### `06_anomalias_memoria.py`
-
-- Calcula anomalias mensuales.
-- Evalua memoria temporal mediante autocorrelacion de la serie mensual y de las anomalias.
-
-### `11_analisis_espectral.py`
-
-- Agrega la serie diaria a promedio mensual para reducir la saturacion del espectro.
-- Aplica analisis espectral de Fourier a estacion CRNS, IMERG y CMORPH.
-- Remueve la media antes de la transformada.
-- Convierte frecuencia a periodo en dias.
-- Resalta periodos hidrologicamente relevantes: anual, semestral y escala mensual orientativa.
-- Genera una figura PNG, una figura HTML interactiva y una tabla de picos dominantes.
-
-### `07_analisis_precipitacion_anual.py`
-
-- Analiza precipitacion anual y diaria.
-- Calcula momentos estadisticos, L-momentos, percentiles y distribucion empirica acumulada.
-
-### `08_analisis_ciclo_diurno.py`
-
-- Analiza el ciclo diurno en hora local de Champaign.
-- Compara estacion, IMERG y CMORPH.
-- Genera ciclo diurno promedio, distribucion porcentual y mapa hora-mes.
-
-### `09_curvas_idf_empiricas.py`
-
-- Construye curvas IDF empiricas.
-- Calcula maximos anuales de intensidad para diferentes duraciones.
-- Estima intensidades de diseno con Gumbel.
-- Compara estacion con IMERG y CMORPH para duraciones mayores o iguales a 30 min.
-
-### `10_cuenca_caudal_teorico.py`
-
-- Identifica la cuenca HydroBASINS que contiene la estacion.
-- Calcula area y perimetro.
-- Genera mapa de cuenca.
-- Calcula caudal medio anual teorico y caudales pico teoricos.
-
-## Instalacion de dependencias
-
-Para instalar las dependencias principales:
+Instalacion recomendada:
 
 ```bash
 py -m pip install pandas numpy matplotlib plotly kaleido scipy geopandas shapely pyproj fiona
 ```
 
-En Windows, si `geopandas` o `fiona` fallan por dependencias de GDAL, puede usarse Conda:
+Si `geopandas` o `fiona` fallan en Windows por dependencias geoespaciales, usar Conda:
 
 ```bash
 conda install geopandas
 ```
 
-Otra opcion funcional en algunos entornos de Python recientes es instalar `pyogrio` como motor geoespacial:
+## Ejecucion con la entrega actual
+
+Con los archivos que quedaron en `datos_limpios/`, se pueden regenerar los analisis que usan tablas ya procesadas:
 
 ```bash
-py -m pip install geopandas shapely pyproj pyogrio
+py "TAREA_2_HIDROLOGIA/codigo/05_graficas_estacion_imerg_cmorph.py"
+py "TAREA_2_HIDROLOGIA/codigo/06_anomalias_memoria.py"
+py "TAREA_2_HIDROLOGIA/codigo/07_analisis_precipitacion_anual.py"
+py "TAREA_2_HIDROLOGIA/codigo/11_analisis_espectral.py"
 ```
 
-## Como ejecutar todo el proyecto
+El analisis espectral crea automaticamente la carpeta `html/` si no existe y guarda alli la figura interactiva:
 
-Para reproducir todo el flujo:
+```text
+TAREA_2_HIDROLOGIA/html/fig21_analisis_espectral_precipitacion.html
+```
+
+## Ejecucion completa desde datos originales
+
+Para reproducir absolutamente todo el flujo con el script maestro, primero debe existir la carpeta `TAREA_2_HIDROLOGIA/DATOS_PREC/` con los datos originales de estacion, IMERG y CMORPH.
+
+Cuando esa carpeta este disponible, ejecutar desde la raiz del repositorio:
 
 ```bash
 py "TAREA_2_HIDROLOGIA/codigo/00_ejecutar_todo.py"
 ```
 
-Este comando debe ejecutarse desde la carpeta raiz del repositorio, es decir, desde el directorio que contiene la carpeta `TAREA_2_HIDROLOGIA/`.
+El script maestro ejecuta:
 
-Para ejecutar un script individual:
+1. `04_limpieza_estacion_imerg_cmorph.py`
+2. `05_graficas_estacion_imerg_cmorph.py`
+3. `06_anomalias_memoria.py`
+4. `11_analisis_espectral.py`
+5. `07_analisis_precipitacion_anual.py`
+6. `08_analisis_ciclo_diurno.py`
+7. `09_curvas_idf_empiricas.py`
+8. `10_cuenca_caudal_teorico.py`
 
-```bash
-py "TAREA_2_HIDROLOGIA/codigo/04_limpieza_estacion_imerg_cmorph.py"
+Los scripts `04`, `08`, `09` y `10` pueden requerir datos crudos o recursos geoespaciales adicionales. Si `DATOS_PREC/` no existe, el flujo maestro no es reproducible completo.
+
+## Datos procesados disponibles
+
+Las tablas principales estan en `datos_limpios/`:
+
+- `precipitacion_diaria_estacion_imerg_cmorph.csv`
+- `precipitacion_mensual_estacion_imerg_cmorph.csv`
+- `precipitacion_anual_estacion_imerg_cmorph.csv`
+- `anomalias_mensuales_estacion_imerg_cmorph.csv`
+- `ciclo_diurno_horario_estacion_imerg_cmorph.csv`
+- `climatologia_mensual_estacion_imerg_cmorph.csv`
+- `idf_maximos_anuales_estacion.csv`
+- `idf_intensidades_diseno_estacion.csv`
+- `idf_intensidades_diseno_satelites.csv`
+- `idf_comparacion_30min_o_mas.csv`
+- `analisis_espectral_picos.csv`
+
+## Bonus: analisis espectral de Fourier
+
+Script:
+
+```text
+TAREA_2_HIDROLOGIA/codigo/11_analisis_espectral.py
 ```
 
-Por ejemplo, para regenerar solo el bonus de Fourier:
+Entrada:
 
-```bash
-py "TAREA_2_HIDROLOGIA/codigo/11_analisis_espectral.py"
+```text
+TAREA_2_HIDROLOGIA/datos_limpios/precipitacion_diaria_estacion_imerg_cmorph.csv
 ```
+
+Procedimiento:
+
+- lee la precipitacion diaria de estacion CRNS, IMERG y CMORPH;
+- ordena la serie por fecha;
+- reindexa el periodo 2015-2024 al calendario diario completo;
+- rellena valores faltantes con `0.0 mm` y lo informa en consola;
+- calcula el promedio mensual de la precipitacion diaria para evitar saturacion del espectro;
+- remueve la media de cada serie;
+- aplica FFT con `numpy.fft`;
+- convierte frecuencia a periodo en dias;
+- grafica potencia espectral contra periodo;
+- resalta 365, 180 y 30 dias como referencias hidrologicas.
+
+Salidas:
+
+```text
+TAREA_2_HIDROLOGIA/figuras/fig21_analisis_espectral_precipitacion.png
+TAREA_2_HIDROLOGIA/html/fig21_analisis_espectral_precipitacion.html
+TAREA_2_HIDROLOGIA/datos_limpios/analisis_espectral_picos.csv
+```
+
+Resultado principal: al usar promedio mensual, el ciclo anual de 365.25 dias aparece como periodo dominante en estacion CRNS, IMERG y CMORPH.
 
 ## Resultados principales
 
-### Precipitacion total 2015-2024
+- Periodo de analisis: 2015-01-01 a 2024-12-31.
+- Dias del periodo: 3653.
+- Dias comunes entre estacion, IMERG y CMORPH: 3314.
+- Datos faltantes en estacion CRNS: 9.28%.
+- Datos faltantes en IMERG y CMORPH: 0.00%.
+
+Precipitacion total 2015-2024:
 
 - Estacion CRNS: 8737.20 mm.
 - IMERG: 11075.89 mm.
 - CMORPH: 9402.79 mm.
 
-### Comparacion diaria
+Comparacion diaria:
 
 - IMERG: r = 0.797, RMSE = 4.77 mm/dia, PBIAS = 14.5%.
 - CMORPH: r = 0.701, RMSE = 5.59 mm/dia, PBIAS = -1.7%.
 
-### Ciclo anual
+Analisis espectral:
 
-- Estacion CRNS: mes mas lluvioso promedio mayo, 111.86 mm/mes; mes mas seco promedio febrero, 43.82 mm/mes.
-- IMERG: mes mas lluvioso promedio julio, 128.44 mm/mes; mes mas seco promedio febrero, 62.43 mm/mes.
-- CMORPH: mes mas lluvioso promedio julio, 119.48 mm/mes; mes mas seco promedio enero, 33.66 mm/mes.
-
-### Ciclo diurno
-
-- Hora pico estacion CRNS: 21:00.
-- Hora pico IMERG: 02:00.
-- Hora pico CMORPH: 22:00.
-- Correlacion ciclo diurno estacion-IMERG: 0.455.
-- Correlacion ciclo diurno estacion-CMORPH: 0.296.
-
-### Anomalias y memoria
-
-- IMERG reproduce mejor las anomalias mensuales: correlacion = 0.854, RMSE = 21.12 mm.
-- CMORPH: correlacion = 0.790, RMSE = 25.47 mm.
-- Persistencia media absoluta rezagos 1-3: serie completa = 0.088, anomalias = 0.104.
-
-### Analisis espectral de Fourier
-
-- Se uso el promedio mensual de la precipitacion diaria para evitar la saturacion del espectro diario.
 - Periodo dominante estacion CRNS: 365.25 dias.
 - Periodo dominante IMERG: 365.25 dias.
 - Periodo dominante CMORPH: 365.25 dias.
 - El ciclo anual aparece como senal dominante en las tres fuentes.
-- La referencia de 30 dias se conserva solo como escala hidrologica orientativa porque el analisis mensual resuelve mejor ciclos de dos meses o mas.
 
-### IDF y sumidero
-
-- Duracion critica recomendada para parqueadero de 200 m x 200 m: 15 min.
-- Intensidad de diseno recomendada: I = 91.67 mm/h, d = 15 min, T = 10 anos, fuente = estacion CRNS, metodo = Gumbel.
-- Escenarios IDF: T = 2 anos: 79.21 mm/h; T = 10 anos: 91.67 mm/h; T = 25 anos: 97.94 mm/h.
-
-### Caudal del parqueadero
-
-- Area = 4 ha.
-- Coeficiente de escorrentia: C = 0.9.
-- Caudal estimado por metodo racional: aproximadamente 0.92 m3/s.
-
-### Cuenca y caudal maximo teorico
-
-Los valores de esta seccion provienen de `cuenca/atributos_cuenca_champaign.csv` y `cuenca/caudal_maximo_teorico_champaign.csv`.
-
-- HYBAS_ID: 7070552430.
-- Nivel HydroBASINS: 7.
-- Area calculada: 1768.20 km2.
-- Perimetro calculado: 249.48 km.
-- Caudal medio anual teorico: 48.96 m3/s.
-- Caudal pico teorico estacion 30 min: 31336.67 m3/s.
-- Caudal pico teorico estacion 60 min: 19597.70 m3/s.
-- Caudal pico teorico estacion 360 min: 5239.15 m3/s.
-- Caudal pico teorico estacion 1440 min: 1653.61 m3/s.
-- Caudal pico teorico IMERG 30 min: 25388.60 m3/s.
-- Caudal pico teorico IMERG 60 min: 15602.03 m3/s.
-- Caudal pico teorico IMERG 360 min: 5357.03 m3/s.
-- Caudal pico teorico IMERG 1440 min: 1884.87 m3/s.
-- Caudal pico teorico CMORPH 30 min: 38831.93 m3/s.
-- Caudal pico teorico CMORPH 60 min: 19415.97 m3/s.
-- Caudal pico teorico CMORPH 360 min: 9580.28 m3/s.
-- Caudal pico teorico CMORPH 1440 min: 2395.07 m3/s.
-
-## Advertencias metodologicas
-
-- La estacion CRNS presenta 9.28% de datos faltantes; por eso algunos anos, especialmente 2018, deben interpretarse con cautela.
-- IMERG tiende a sobreestimar el acumulado total frente a la estacion.
-- CMORPH se aproxima mejor al acumulado total, pero presenta una cola extrema mas marcada.
-- IMERG y CMORPH tienen resolucion temporal de 30 minutos, por lo que no se usaron para construir IDF de 5, 10 ni 15 minutos.
-- El valor IDF para T = 25 anos es extrapolacion porque el registro usado tiene 10 anos.
-- Los caudales maximos teoricos de cuenca son limites superiores absolutos porque se asumio ET = 0 y deltaS = 0.
-
-## Figuras principales
+## Salidas principales
 
 Figuras recomendadas para el informe:
 
@@ -234,37 +162,17 @@ Figuras recomendadas para el informe:
 - `fig15_ciclo_diurno_mes_hora_estacion_crns`
 - `fig16_curvas_idf_estacion_crns`
 - `fig17_comparacion_idf_estacion_imerg_cmorph`
-- `fig21_analisis_espectral_precipitacion`
 - `fig19_caudal_maximo_teorico_cuenca`
+- `fig21_analisis_espectral_precipitacion`
 - `mapa_cuenca_estacion_champaign`
 
-Algunas figuras adicionales quedan como respaldo o anexo.
+## Advertencias de reproduccion
 
-## Herramientas de IA utilizadas
+- La carpeta `DATOS_PREC/` no esta en la estructura actual; sin ella no se puede correr el flujo completo desde datos crudos.
+- `datos_limpios/` se conserva porque los scripts actuales apuntan a esa ruta.
+- La carpeta `html/` no necesita existir antes de ejecutar; `11_analisis_espectral.py` la crea automaticamente.
+- Algunos HTML historicos siguen dentro de `figuras/` porque fueron generados por scripts anteriores.
 
-Se usaron herramientas de IA, incluyendo ChatGPT y Codex, como apoyo para:
+## IA utilizada
 
-- estructurar el flujo de trabajo,
-- depurar codigo,
-- organizar resultados,
-- proponer interpretaciones,
-- redactar borradores del analisis.
-
-Los resultados fueron revisados por los autores y las interpretaciones se basan en las salidas generadas por los scripts y los datos procesados.
-
-## Reproducibilidad
-
-Para reproducir todo el analisis desde los datos disponibles en el proyecto, ejecutar:
-
-```bash
-py "TAREA_2_HIDROLOGIA/codigo/00_ejecutar_todo.py"
-```
-
-El flujo genera:
-
-- CSV limpios en `datos_limpios/`.
-- Figuras en `figuras/`.
-- Figuras interactivas en `html/`.
-- Resultados de cuenca en `cuenca/`.
-- Tablas de IDF y caudal teorico.
-- Tabla de picos espectrales en `datos_limpios/analisis_espectral_picos.csv`.
+Se usaron herramientas de IA, incluyendo ChatGPT y Codex, como apoyo para estructurar el flujo de trabajo, depurar codigo, organizar resultados y redactar interpretaciones. Los resultados fueron revisados a partir de las salidas generadas por los scripts.
